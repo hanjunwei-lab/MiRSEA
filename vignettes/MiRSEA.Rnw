@@ -1,0 +1,307 @@
+%
+% NOTE -- ONLY EDIT MiRSEA.Rnw!!!
+% MiRSEA.tex file will get overwritten.
+%
+%\VignetteIndexEntry{MiRSEA Overview}
+%\VignetteKeywords{microRNA}
+%\VignettePackage{MiRSEA}
+
+\documentclass[10pt]{article}
+
+\usepackage{hyperref}
+\usepackage[pdftex]{graphicx}
+\SweaveOpts{keep.source=TRUE,eps=FALSE,pdf=TRUE,prefix=FALSE} 
+\author{Junwei Han}
+
+\textwidth=6.2in
+\textheight=8.5in
+%\parskip=.3cm
+\oddsidemargin=.1in
+\evensidemargin=.1in
+\headheight=-.3in
+
+\newcommand{\xiaowuhao}{\fontsize{9pt}{\baselineskip}\selectfont}
+\newcommand{\liuhao}{\fontsize{7.875pt}{\baselineskip}\selectfont}
+\newcommand{\qihao}{\fontsize{5.25pt}{\baselineskip}\selectfont}
+
+\newcommand\Rpackage[1]{{\textsf{#1}\index{#1 (package)}}}
+\newcommand\RpackageNoindex[1]{{\textsf{#1}}}
+\newcommand\Rclass[1]{{\textit{#1}\index{#1 (class)}}}
+\newcommand\Rfunction[1]{{{\small\texttt{#1}}\index{#1 (function)}}}
+\newcommand\Rmethod[1]{{\small\texttt{#1}}}
+\newcommand\Rcommand[1]{{{\small\texttt{#1}}\index{#1 (function)}}}
+\newcommand\Rfunarg[1]{{\small\texttt{#1}}}
+\newcommand\Robject[1]{{\small\texttt{#1}}}
+\bibliographystyle{plainnat}
+
+\begin{document}
+\setkeys{Gin}{width=1.0\textwidth}
+\title{How To Use MiRSEA}
+\maketitle
+\tableofcontents
+
+\section{Overview}
+This vignette demonstrates how to easily use the \Rpackage{MiRSEA} package. The package can identify dysregulated pathways(or prior gene sets) by a novel method of microRNA(miRNA) set enrichment analysis(MiRSEA). Regulation of dysregulated pathway(or prior gene set) of microRNAs concentrated at the top or bottom of the miRNA List.Our system constructs the gene sets of pathways from three database(Kyoto Encyclopedia of Genes and Genomes(KEGG); Reactome; Biocarta;) and target gene sets of human microRNAs(miRNAs) from four database(TarBaseV6.0; mir2Disease; miRecords; miRTarBase;).The MiRSEA can quantify the strength of the pathway(or prior gene set) regulated by miRNAs.It gets a weighting matrix of strength of the pathway regulated by each miRNA(see the section \ref{GetP2MSection}).The MiRSEA uses the weighted Kolmogorov-Smirnov statistic to calculate a miRNA set enrichment score(ES),which is in order to assess if the pathway(or prior gene set) is associated the specific phenotype(see the section \ref{MirSEASection}).When users input interesting pathway name,the MiRSEA package also can create a running enrichment plot and a Heat Map of the miRNAs(see the section \ref{MsPlotSection})
+<<echo=FALSE>>=
+library(MiRSEA)
+@ 
+
+
+\section{Get the pathway-miRNA correlation profile(pmSET) and a weighting matrix}\label{GetP2MSection}
+The section introduces how to obtain the pathway-miRNA correlation file and a p.value weighting matrix.The miRNA and target gene data are collected from the four popular public microRNA databases(TarBase
+V6.0; mir2Disease; miRecords and miRTarBase). Each rows of the dataframe represents a target gene set of miRNA. The human pathways data are collected from the three popular public databases (KEGG, Reactome,Biocarta).Each rows of the downloaded dataframe represents a gene set of pathway,whose first and second column are the pathway name and source.
+
+MiRSEA calculate a weighting matrix by hypergeometric test,which represent strength of the pathway(or prior gene set) regulated by each miRNA.Each row of the weighting matrix represents a pathway,whose columns represent miRNA . The weighting value(w) of the matrix is 1- p value of hypergeometric test,which can quantify the strength of the pathway(or prior gene set) regulated by the miRNAs.The smaller p value is represent the bigger strength of regulate.For each human pathway(or prior gene set),MiRSEA get a co-regulated miRNA set of the pathway(or prior gene set)(pmSET,w>0).
+
+The following commands can obtain the pathway-miRNA correlation file(pmSET) and a weighting matrix of p value.
+
+<<>>=
+#getting KEGG pathway and human miRNAs Correlation profile(pmSET)
+#and getting a weighting matrix of human miRNAs
+p22m<-Corrp2miRfile(pathway="kegg",species="example")
+#getting a weighting matrix of human miRNAs 
+p_value<-p22m$p
+p_value[1,1:15]
+#getting the column names of matrix(miRNA names)
+miRnames<-colnames(p_value)
+miRnames[1:10]
+#getting the row names of matrix(pathway names)
+pathway.names<-rownames(p_value)
+pathway.names[1:2]
+#getting the set of regulating miRNAs of each pathway(pmSET)
+p2miR<-p22m$p2miR
+p2miR[1,1:5]
+@
+
+\begin{Schunk}
+\begin{Sinput}
+>##write the results to tab delimited file.
+>write.table(p_value,file="p_value.txt",sep="\t")
+>##write the results to tab delimited file.
+>write.table(p2miR,file="p2miR.gmt",sep="\t",row.names=FALSE,col.names=FALSE)
+\end{Sinput}
+\end{Schunk}
+
+\section{Discovering the dysregulated pathways(or prior gene sets) based on miRNA set enrichment analysis}\label{MirSEASection}
+
+The section introduces the miRNA Set Enrichment Analysis (MiRSEA) method for identifying canonical biological pathways(or prior gene set) associated with a specific phenotype.MiRSEA identify dysregulated pathways(or prior gene set) by calculating the weighted Kolmogorov-Smirnov statistic of the microRNA set(pmSET),which regulate genes in the pathway(see the section \ref{GetP2MSection}). MiRSEA calculate differential weighted score(dw-score)for miRNAs, integrated pathway(or prior gene set)regulated by miRNA set and differential expression of miRNA among two phenotypes. MirSEA operates on all miRNAs from an experiment and get a miRNA list ranking ordered by the dw-score.Finally, the weighted Kolmogorov-Smirnov statistic is used to prioritize the pathways(or prior gene set) by mapping the miRNAs in the pmSET to the miRNA list (see the section \ref{Getpathwaysection})
+
+\subsection{calculate signal to noise ratio for miRNA}\label{S2N}
+ 
+For each miRNA,The function \Rfunction{S2N}can calculate the differential expression scores(signal to noise ratio) of cancer samples and control samples.The following commands can calculate the differential expression scores(signal to noise ratio) of miRNAs in a given miRNA expression dataset.
+
+<<>>=
+
+#input example expression dataset
+A<-matrix(runif(200),10,20)
+##input a class.labels("0" or "1") of the expression dataset
+a1<-rep(0,20)
+a1[sample(1:20,5)]=1
+a1<-sort(a1,decreasing=FALSE)
+#Calculate the differential expression score for miRNAs
+M1<-S2N(A, class.labels=a1, miR.labels=seq(1,10), nperm=100)
+#print the top five observed results to screen
+M1$obs.s2n.matrix[1:5,1] 
+#print the top five permutations results to screen
+M1$s2n.matrix[1:5,1:5] 
+@
+
+\subsection{Discovering the dysregulated pathways}\label{Getpathwaysection}
+
+MiRSEA identify dysregulated pathways(or prior gene sets) by calculating the weighted Kolmogorov-Smirnov statistic of the microRNA set(pmSET),which regulate genes in the pathway(or prior gene set).The weighted Kolmogorov-Smirnov statistic is used to evaluate each pathway(or prior gene set) and the permutation is used to calculate the statistical significance of pathways(or prior gene set).
+
+The function \Rfunction{MirSEA} can identify the dysregulated pathways(or prior gene sets). The following commands can identify the dysregulated pathways(or prior gene sets) in a given miRNA expression dataset with default parameters. 
+
+
+<<>>=
+#input example expression dataset
+#input.ds <- readLines("F:/lsy/xin data/GSE36915.gct")
+input.ds <- GetExampleData("dataset")
+##input a class.labels of the expression dataset
+#input.cls <- readLines("F:/lsy/xin data/GSE36915.cls")
+input.cls <- GetExampleData("class.labels")
+
+#get example of p value matrix
+#p_value<-p22m$p
+p_value <- GetExampleData("p_value")
+#get example of correlation profile
+#p2miR<-p22m$p2miR
+p2miR <- GetExampleData("p2miR")
+#identify dysregulated pathways by using the function MirSEA
+MirSEAresult <- MirSEA(input.ds,input.cls,p_value,p2miR,
+reshuffling.type = "miR.labels", nperm = 100, 
+weighted.score.type = 1, ms.size.threshold.min = 10, 
+ms.size.threshold.max = 500)
+
+#print the summary results of up-regulated pathways to screen
+summaryResult1<-MirSEAresult$report.phen1
+summaryResult1[1:5,]
+#print the summary results of down-regulated pathways to screen
+summaryResult2<-MirSEAresult$report.phen2
+summaryResult2[1:5,]
+@
+ 
+The each row of the summaryResult (data.frame) is a pathway. Columns include 'Pathway name', 'SIZE', 'Pathway Source', 'ES', 'NES', 'NOM p-val','FDR q-val','Tag percentage'(Percent of miRNA set before running enrichment peak),'MiR percentage'(Percent of miRNA list before running enrichment peak),'Signal strength'(enrichment signal strength).
+ 
+ 
+\begin{Schunk}
+\begin{Sinput}
+>##write the results to tab delimited file.
+>write.table(summaryResult1,file="summaryResult1.txt",sep="\t",row.names=FALSE)
+>##write the results to tab delimited file.
+>write.table(summaryResult2,file="summaryResult2.txt",sep="\t",row.names=FALSE)
+\end{Sinput}
+\end{Schunk}
+
+\section{Get running result of a pathway }\label{MsPlotSection}
+
+\subsection{Produce report for a pmSET(a miRNA set for pathway)}
+
+When users input a interesting pathway(or prior gene set),the function \Rfunction{MsReport} can create a report for miRNA set that coordinated regulate this pathway(or prior gene set).Msreport is matrix of input pathway(or prior gene set) which present the detail results. Its columns include  "miRNA name", "location of the miRNA in the sorted miRNA list", "dw-scoe of miRNA", "Running enrichment score", "Property of contribution".miRList is a list of drawing parameters for function \Rfunction{PlotHeatMap},\Rfunction{PlotCorrelation} and \Rfunction{PlotRunEnrichment}. 
+
+<<>>=
+#get example data
+#input.ds <- readLines("F:/lsy/xin data/GSE36915.gct")
+#input.cls <- readLines("F:/lsy/xin data/GSE36915.cls")
+input.ds <- GetExampleData("dataset")
+input.cls <- GetExampleData("class.labels")
+
+#get example of p value matrix
+p_value <- GetExampleData("p_value")
+#get example of correlation profile
+p2miR <- GetExampleData("p2miR")
+
+#get a report of miRNA set for KEGG ERBB pathway
+Results<-MsReport(MsNAME = "KEGG_ERBB_SIGNALING_PATHWAY", input.ds, input.cls,p_value,p2miR)
+# show the report of top five miRNA in the pathway
+Results[[1]][1:5,]
+miR.report<-Results[[1]]
+
+##write the results to tab delimited file.
+write.table(miR.report,file="miR.report.txt",sep="\t",row.names=FALSE)
+#write the detail results of miRNAs for drawing results
+for(i in 1:length(Results[[2]])){ 
+miRList<-Results[[2]][[i]]
+filename <- paste("miRPlots",".txt", sep="", collapse="")
+write.table(miRList, file = filename, quote=F, row.names=F,col.names=F, sep = "\t",append=T)
+}
+@
+
+
+\subsection{Plot global miRNAs correlation(dw-score) profile}
+
+The function \Rfunction{PlotCorrelation} can plot global miR correlation profile for differential weighted scores(dw-score) of miRs
+
+<<>>=
+#get example data
+#input.ds <- readLines("F:/lsy/xin data/GSE36915.gct")
+#input.cls <- readLines("F:/lsy/xin data/GSE36915.cls")
+input.ds <- GetExampleData("dataset")
+input.cls <- GetExampleData("class.labels")
+ 
+#get a list of miRNA list result
+#Results<-MsReport(MsNAME="KEGG_ERBB_SIGNALING_PATHWAY", input.ds, input.cls,
+#weighted.score.type = 1)
+#miRlist<-Results[[2]]
+miRlist<-GetExampleData("miRList")
+@ 
+<<GlobmiRCorProfile, fig=TRUE, include=FALSE, prefix=FALSE>>=
+#plot global miRNA correlation profile
+PlotCorrelation(miRlist)
+@
+
+Figure \ref{GlobmiRCorProfile} shows the global miRNA correlation profile for differential weighted score(dw-score) of miRNAs.
+
+\begin{figure}[htbp]
+\begin{center}
+\includegraphics[width=1.0\textwidth]{GlobmiRCorProfile}
+\caption{The visualization of global miRNAs correlation profile for differential weighted score(dw-score) of miRNAs.}\label{GlobmiRCorProfile}
+\end{center}
+\end{figure}
+@
+
+
+\subsection{Plot running miRNAs enrichment score}
+
+The function \Rfunction{PlotRunEnrichment} can plot running miRNAs enrichment score for the pathway(or prior gene set) result.
+
+<<>>=
+#get example data
+#
+input.ds <- GetExampleData("dataset")
+input.cls <- GetExampleData("class.labels")
+ 
+#get a list of miRNA list result
+#Results<-MsReport(MsNAME="KEGG_ERBB_SIGNALING_PATHWAY", input.ds, input.cls,
+#weighted.score.type = 1)
+#miRlist<-Results[[2]]
+miRlist<-GetExampleData("miRList")
+@ 
+
+<<RunmiREScore, fig=TRUE, include=FALSE, prefix=FALSE>>=
+#Plot running miRNAs enrichment score for the pathway result
+PlotRunEnrichment(miRlist)
+@
+
+Figure \ref{RunmiREScore} shows the running miRNAs enrichment score for the pathway(or prior gene set) result
+
+\begin{figure}[htbp]
+\begin{center}
+\includegraphics[width=1.0\textwidth]{RunmiREScore}
+\caption{The visualization of the running miRNAs enrichment score for the pathway result}\label{RunmiREScore}
+\end{center}
+\end{figure}
+@  
+\subsection{Plot a heat map}
+
+The function \Rfunction{PlotHeatMap} can plot a heat map for a miR set which co-regulate pathway(or prior gene set)
+
+<<>>=
+#get example data
+input.ds <- GetExampleData("dataset")
+input.cls <- GetExampleData("class.labels")
+ 
+#get a list of miRNA list result
+#Results<-MsReport(MsNAME="KEGG_ERBB_SIGNALING_PATHWAY", input.ds, input.cls,
+# weighted.score.type = 1)
+#miRlist<-Results[[2]]
+miRlist<-GetExampleData("miRList")
+@ 
+
+<<HeatMapPlot, fig=TRUE, include=FALSE, prefix=FALSE>>=
+#Plot a heat map for a miRNA set which co-regulate pathway
+PlotHeatMap(miRlist,input.ds,input.cls)
+@
+
+Figure \ref{HeatMapPlot} shows a heat map for a miRNA set which co-regulate the pathway 
+
+\begin{figure}[htbp]
+\begin{center}
+\includegraphics[width=1.0\textwidth]{HeatMapPlot}
+\caption{The visualization of heat map for a miRNA set}\label{HeatMapPlot}
+\end{center}
+\end{figure}
+@  
+\section{Data management}\label{managementSection}
+
+The environment variable \Robject{envData}, which is used as the database of the system, stores many data relative to pathway analyses. We can use the function \Rfunction{ls} to see the environment variable and use \Rfunction{ls(envData)} to see data in it. These data include \Robject{pathway}, \Robject{miRTarget},\Robject{example.CLS},\Robject{example.GCT},\Robject{miRList}.For example, the variable \Robject{pathway} show some gene sets. The variable \Robject{mfile} include some miRs and their target genes ,which we combined from some databases.The variable \Robject{example.GCT} is an interesting miRNAs expression data and  the variable \Robject{example.CLS}is the vector of binary labels(class.labels).The variable \Robject{miRList} provides drawing parameters of miRNA set.
+<<>>=  
+##data in environment variable envData
+ls(envData)
+@
+
+\newpage
+\section{Session Info}
+The script runs within the following session:
+<<sessionInfo, echo=FALSE, results=verbatim>>=
+sessionInfo()
+@
+
+
+\begin{thebibliography}{}
+
+\bibitem[Subramanian {\it et~al}., 2005]{Subramanian2009} Subramanian, A., Tamayo, P., Mootha, V.K., Mukherjee, S., Ebert, B.L., Gillette, M.A., Paulovich, A., Pomeroy, S.L., Golub, T.R., Lander, E.S. et al. (2005) Gene set enrichment analysis: a knowledgebased approach for interpreting genome-wide expression profiles. Proc Natl Acad Sci U S A, 102, 15545-15550.
+
+\end{thebibliography}
+
+\end{document}
